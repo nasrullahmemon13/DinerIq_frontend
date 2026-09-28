@@ -1,0 +1,26 @@
+.register-page, .register-request {
+  --bg-app: #f5f3ec;
+  --surface: #fafbf9;
+  --surface-secondary: #edf0e5;
+  --surface-elevated: #fffef9;
+  --text-primary: #183c32;
+  --text-secondary: #4d6155;
+  --text-muted: #697b66;
+  --primary: #365d40;
+  --primary-glow: rgba(54,93,64,.12);
+  --border: #dce1d2;
+  --card-shadow: 0 8px 30px rgba(24,60,50,.07);
+}
+.register-page > div:first-child {
+  --text-secondary: #c4d5c7;
+  --text-muted: #a4bda7;
+  --primary: #dfed9c;
+  background-image: linear-gradient(rgba(16,39,31,.82),rgba(16,39,31,.94)),url('/images/auth_login_bg.jpg') !important;
+}
+.register-page input:focus-visible, .register-page select:focus-visible { outline: 2px solid #718f80 !important; outline-offset: 2px; }
+[data-theme="light"] .register-page input, [data-theme="light"] .register-page select { color: var(--text-primary) !important; }
+.register-request { max-width: 540px; margin: 12vh auto; padding: 40px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text-primary); box-shadow: var(--card-shadow); }
+.register-request h1 { font-size: 28px; letter-spacing: -.8px; margin-bottom: 16px; }
+.register-request p { color: var(--text-secondary); line-height: 1.8; margin-bottom: 24px; }
+.register-request a { display: inline-block; padding: 12px 18px; border-radius: 8px; background: var(--primary); color: #fff; text-decoration: none; }
+@media(max-width:760px) { .register-page { flex-direction: column; } .register-page > div { padding: 28px 22px !important; } .register-page > div:first-child > div:nth-child(2) { display: none !important; } .register-request { margin: 40px 20px; padding: 28px; } }

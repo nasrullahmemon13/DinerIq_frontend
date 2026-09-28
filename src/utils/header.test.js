@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { existsSync } from 'node:fs';
+import puppeteer from 'puppeteer-core';
+import { createServer } from 'vite';
+
+const executablePath = process.env.BROWSER_PATH || ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(existsSync);
+test('header controls navigate, filter, show notifications and sign out', { skip: !executablePath }, async () => {
+  const server = await createServer({ server: { port: 0, host: '127.0.0.1' } });
+  await server.listen();
+  let browser;
+  try {
+    browser = await puppeteer.launch({ executablePath, headless: true, timeout: 15000 });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1600, height: 900 });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const requests = [];
+    const user = { username: 'header-test', full_name: 'Header Test', role_id: 'admin' };
+    await page.evaluateOnNewDocument(user => {
+      if (!sessionStorage.getItem('test-seeded')) {
+        localStorage.setItem('dineiq_token', 'test-token');
+        localStorage.setItem('dineiq_user', JSON.stringify(user));
+        sessionStorage.setItem('test-seeded', 'yes');
+      }
+    }, user);
+    await page.setRequestInterception(true);
+    page.on('request', req => {
+      const url = new URL(req.url());
+      if (!url.pathname.startsWith('/api/')) return req.continue();
+      requests.push(url.pathname + url.search);
+      let data = {};
+      if (url.pathname.endsWith('/auth/me')) data = { user };
+      if (url.pathname === '/api/v1/locations') data = [{ location_id: 'LOC-001', name: 'Test Restaurant' }];
+      if (url.pathname.endsWith('/recommendations')) data = { recommendations: [{ recommendation_id: 'REC-1', priority: 'High', recommended_action: 'Review stock', review: { status: 'pending' } }] };
+      if (url.pathname.endsWith('/search/options')) data = { dimensions: {} };
+      if (url.pathname.endsWith('/search/filter')) return req.respond({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Search temporarily unavailable' }) });
+      return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+    });
+    await page.goto(server.resolvedUrls.local[0] + 'dashboard', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const click = async label => { await page.waitForSelector(`[aria-label="${label}"]`); await page.click(`[aria-label="${label}"]`); };
+    await click('Toggle Sidebar');
+    assert.equal(await page.$eval('[aria-label="Toggle Sidebar"]', e => e.getAttribute('aria-expanded')), 'false');
+    await page.select('[aria-label="Date range"]', 'Q2');
+    await page.waitForFunction(() => !document.body.textContent.includes('Loading Executive Intelligence'));
+    await Promise.all([page.waitForResponse(r => r.url().includes('location_id=LOC-001') && r.url().includes('date_range=Q2')), page.select('[aria-label="Location"]', 'LOC-001')]);
+    assert.ok(requests.some(url => url.includes('location_id=LOC-001') && url.includes('date_range=Q2')));
+    await click('Switch to Dark Mode');
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    await click('Switch to Light Mode');
+    await page.waitForFunction(() => localStorage.getItem('dineiq-theme') === 'light');
+    await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+    await page.waitForSelector('dialog[open] input');
+    await page.type('dialog input', 'customers');
+    assert.ok(await page.$eval('dialog', e => e.textContent.includes('Customers')));
+    await page.keyboard.press('Escape');
+    await click('Open search');
+    await page.type('dialog input', 'no-such-page');
+    assert.ok(await page.$eval('dialog', e => e.textContent.includes('No matching')));
+    await page.evaluate(() => [...document.querySelectorAll('dialog button')].find(e => e.textContent.includes('Advanced data')).click());
+    await page.waitForSelector('[aria-label="Close advanced filters"]');
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(e => e.textContent.includes('Apply 11')).click());
+    await page.waitForFunction(() => document.body.textContent.includes('Search temporarily unavailable'));
+    await click('Close advanced filters');
+    await click('Notifications');
+    await page.waitForFunction(() => document.querySelector('dialog')?.textContent.includes('Review stock'));
+    await page.evaluate(() => [...document.querySelectorAll('dialog button')].find(e => e.textContent.includes('Mark all')).click());
+    assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('dineiq-read-alerts:header-test')).includes('REC-1')));
+    await page.keyboard.press('Escape');
+    await click('Open my profile');
+    assert.ok(await page.$eval('dialog', e => e.textContent.includes('Header Test')));
+    await page.keyboard.press('Escape');
+    await click('Sign out');
+    await page.waitForFunction(() => location.pathname === '/login');
+    assert.equal(await page.evaluate(() => localStorage.getItem('dineiq_token')), null);
+    assert.deepEqual(errors, []);
+  } catch (error) { console.error(error); throw error; } finally { await browser?.close(); await server.close(); }
+});
